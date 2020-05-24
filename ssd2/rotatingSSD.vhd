@@ -22,7 +22,7 @@ architecture ssdRotator of rotatingSSD is
 	signal pr_state, nx_state: state_type;
 	attribute syn_encoding: string;
 	-- Set to sequential encoding
-	attribute syn_encoding of pr_state, nx_state: type is "sequential";
+	attribute syn_encoding of state_type: type is "sequential";
 	
 	-- T2 is for the states where 2 segments of the SSD are lit
 	constant T2_MSEC: natural := 35;
