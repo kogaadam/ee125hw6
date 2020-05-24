@@ -5,7 +5,7 @@ use work.subprograms_pkg.all;
 
 entity rotatingSSD is
 	generic (
-		F_CLK_KHZ: natural := 50_000);
+		F_CLK_KHZ: natural := 50_000); -- internal clock frequency
 	port (
 		clk, rst: in std_logic;
 		start, direction, speed: in std_logic;
@@ -14,24 +14,34 @@ end entity;
 
 architecture ssdRotator of rotatingSSD is
 
+	-- Declare all of the states of the FSM
 	type state_type is (stopped,
 							  stateA, stateAB, stateB, stateBC,
 							  stateC, stateCD, stateD, stateDE,
 							  stateE, stateEF, stateF, stateFA);
 	signal pr_state, nx_state: state_type;
+	attribute syn_encoding: string;
+	-- Set to sequential encoding
+	attribute syn_encoding of pr_state, nx_state: type is "sequential";
 	
+	-- T2 is for the states where 2 segments of the SSD are lit
 	constant T2_MSEC: natural := 35;
 	constant T2_WAIT: natural := T2_MSEC * F_CLK_KHZ;
+	
+	-- T1 is for the states where 1 segment of the SSD is lit
 	constant T1_MSEC_A: natural := 200;
 	constant T1_MSEC_B: natural := 140;
 	constant T1_MSEC_C: natural := 100;
 	constant T1_MSEC_D: natural := 70;
+	-- Counter wait times
 	constant T1_WAIT_A: natural := T1_MSEC_A * F_CLK_KHZ;
 	constant T1_WAIT_B: natural := T1_MSEC_B * F_CLK_KHZ;
 	constant T1_WAIT_C: natural := T1_MSEC_C * F_CLK_KHZ;
 	constant T1_WAIT_D: natural := T1_MSEC_D * F_CLK_KHZ;
 	
+	-- Counters, tmax_single is for changing the speed of the single-segment SSD states
 	signal t, tmax_single, tmax: natural range 0 to T1_WAIT_A;
+	-- Indicators for starting/stopping and direction
 	signal direction_ind, start_ind, speed_ind: std_logic;
 	
 begin
@@ -60,6 +70,7 @@ begin
 	begin
 		if rising_edge(speed) then
 			case tmax_single is
+				-- Cycle through possible speeds by changing the counter maximum
 				when T1_WAIT_A =>
 					tmax_single <= T1_WAIT_B;
 				when T1_WAIT_B =>
@@ -78,10 +89,12 @@ begin
 	process(all)
 	begin
 		case pr_state is
+			-- Set the single segment states' counter
 			when stateA | stateB | stateC | stateD | stateE | stateF =>
 				tmax <= tmax_single;
 			when stopped =>
 				tmax <= 0;
+			-- Set the double segment states' counter
 			when others =>
 				tmax <= T2_WAIT;
 		end case;
@@ -89,6 +102,7 @@ begin
 		if rising_edge(clk) then
 			if pr_state /= nx_state then
 				t <= 0;
+			-- Increment counter if we are not switching state
 			elsif t /= tmax then
 				t <= t + 1;
 			end if;
@@ -110,12 +124,19 @@ begin
 	begin
 		case pr_state is
 			when stopped =>
+				-- start or stay stopped
 				if start_ind then
 					nx_state <= stateA;
 				else
 					nx_state <= stopped;
 				end if;
-				
+			
+			-- For each state:
+			--     go back to stopped state if stop is pressed
+			--     if counter is done then go to next state if direction is CW
+			--		     and previous state if direction is CCW
+			--		 otherwise stay in the same state
+			-- This is repeated for all of the states
 			when stateA =>
 				if not start_ind then
 					nx_state <= stopped;
